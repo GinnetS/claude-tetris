@@ -16,6 +16,7 @@ const PIECES = [
 ];
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
+const MAX_START_LEVEL = 10; // at level 10 the drop interval is already near its 100ms floor
 
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
@@ -25,9 +26,21 @@ const scoreEl = document.getElementById('score');
 const linesEl = document.getElementById('lines');
 const levelEl = document.getElementById('level');
 const overlay = document.getElementById('overlay');
-const overlayTitle = document.getElementById('overlay-title');
+const gameOverBox = document.getElementById('gameover-box');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
+const pauseMenu = document.getElementById('pause-menu');
+const resumeBtn = document.getElementById('resume-btn');
+const menuRestartBtn = document.getElementById('menu-restart-btn');
+const controlsBtn = document.getElementById('controls-btn');
+const menuControls = document.getElementById('menu-controls');
+const startLevelEl = document.getElementById('start-level');
+const levelDownBtn = document.getElementById('level-down');
+const levelUpBtn = document.getElementById('level-up');
+const menuItems = [...pauseMenu.querySelectorAll('[data-menu-item]')];
+
+// Reuse the sidebar controls list so the menu never drifts out of sync with it
+menuControls.innerHTML = document.querySelector('.controls ul').innerHTML;
 const themeToggle = document.getElementById('theme-toggle');
 const themeText = document.getElementById('theme-text');
 const skinSelect = document.getElementById('skin-select');
@@ -169,6 +182,14 @@ const SKINS = {
 let skin = 'retro';
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let startLevel = 1; // chosen in the pause menu, applied by the next init()
+let baseLevel = 1;  // starting level of the game in progress
+// Keys pressed while the menu was open; game input ignores them until released
+const heldKeys = new Set();
+
+function speedFor(lvl) {
+  return Math.max(100, 1000 - (lvl - 1) * 90);
+}
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
@@ -234,8 +255,8 @@ function clearLines() {
   if (cleared) {
     lines += cleared;
     score += (LINE_SCORES[cleared] || 0) * level;
-    level = Math.floor(lines / 10) + 1;
-    dropInterval = Math.max(100, 1000 - (level - 1) * 90);
+    level = baseLevel + Math.floor(lines / 10);
+    dropInterval = speedFor(level);
     updateHUD();
   }
 }
@@ -375,25 +396,88 @@ function loadSkin() {
   try { return localStorage.getItem(SKIN_STORAGE_KEY) || 'retro'; } catch (_) { return 'retro'; }
 }
 
-function endGame() {
-  gameOver = true;
-  cancelAnimationFrame(animId);
-  overlayTitle.textContent = 'GAME OVER';
-  overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
+function showOverlay(box) {
+  gameOverBox.hidden = box !== gameOverBox;
+  pauseMenu.hidden = box !== pauseMenu;
   overlay.classList.remove('hidden');
 }
 
+function hideOverlay() {
+  overlay.classList.add('hidden');
+  gameOverBox.hidden = true;
+  pauseMenu.hidden = true;
+  // Drop focus from menu buttons so Space/Enter can't re-trigger them mid-game
+  if (overlay.contains(document.activeElement)) document.activeElement.blur();
+}
+
+function endGame() {
+  gameOver = true;
+  cancelAnimationFrame(animId);
+  overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
+  showOverlay(gameOverBox);
+}
+
+function pauseGame() {
+  if (paused || gameOver) return;
+  paused = true;
+  cancelAnimationFrame(animId);
+  setControlsOpen(false);
+  showOverlay(pauseMenu);
+  resumeBtn.focus();
+}
+
+function resumeGame() {
+  if (!paused) return;
+  paused = false;
+  hideOverlay();
+  lastTime = performance.now();
+  loop(lastTime);
+}
+
 function togglePause() {
-  if (gameOver) return;
-  paused = !paused;
-  if (!paused) {
-    lastTime = performance.now();
-    loop(lastTime);
-  } else {
-    cancelAnimationFrame(animId);
-    overlayTitle.textContent = 'PAUSA';
-    overlayScore.textContent = '';
-    overlay.classList.remove('hidden');
+  if (paused) resumeGame();
+  else pauseGame();
+}
+
+function setControlsOpen(open) {
+  menuControls.hidden = !open;
+  controlsBtn.setAttribute('aria-expanded', String(open));
+  controlsBtn.textContent = open ? 'Ocultar controles' : 'Ver controles';
+}
+
+function setStartLevel(n) {
+  startLevel = Math.min(MAX_START_LEVEL, Math.max(1, n));
+  startLevelEl.textContent = startLevel;
+  startLevelEl.setAttribute('aria-valuenow', String(startLevel));
+  levelDownBtn.disabled = startLevel === 1;
+  levelUpBtn.disabled = startLevel === MAX_START_LEVEL;
+}
+
+// Keyboard navigation inside the pause menu; game controls never reach here
+function handleMenuKey(e) {
+  const idx = menuItems.indexOf(document.activeElement);
+  switch (e.code) {
+    case 'ArrowUp':
+    case 'ArrowDown': {
+      e.preventDefault();
+      const step = e.code === 'ArrowDown' ? 1 : -1;
+      const nextIdx = idx === -1 ? 0 : (idx + step + menuItems.length) % menuItems.length;
+      menuItems[nextIdx].focus();
+      break;
+    }
+    case 'ArrowLeft':
+    case 'ArrowRight':
+      if (document.activeElement === startLevelEl) {
+        e.preventDefault();
+        setStartLevel(startLevel + (e.code === 'ArrowRight' ? 1 : -1));
+      }
+      break;
+    case 'Enter':
+    case 'Space':
+      // Activate on a fresh press only, so a key held from gameplay can't pick an option
+      e.preventDefault();
+      if (!e.repeat && pauseMenu.contains(document.activeElement)) document.activeElement.click();
+      break;
   }
 }
 
@@ -420,16 +504,17 @@ function init() {
   board = createBoard();
   score = 0;
   lines = 0;
-  level = 1;
   paused = false;
   gameOver = false;
-  dropInterval = 1000;
+  baseLevel = startLevel;
+  level = baseLevel;
+  dropInterval = speedFor(level);
   dropAccum = 0;
   lastTime = performance.now();
   next = randomPiece();
   spawn();
   updateHUD();
-  overlay.classList.add('hidden');
+  hideOverlay();
   cancelAnimationFrame(animId);
   animId = requestAnimationFrame(loop);
 }
@@ -439,8 +524,22 @@ document.addEventListener('keydown', e => {
   if (e.target === themeToggle && (e.code === 'Space' || e.code === 'Enter')) return;
   // Let the focused skin selector use the arrow keys without moving the piece
   if (e.target === skinSelect) return;
-  if (e.code === 'KeyP') { togglePause(); return; }
-  if (paused || gameOver) return;
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    e.preventDefault();
+    if (!e.repeat) togglePause();
+    return;
+  }
+  if (paused) {
+    heldKeys.add(e.code);
+    handleMenuKey(e);
+    return;
+  }
+  if (gameOver) return;
+  // Still held down from the menu: ignore until released to avoid accidental moves
+  if (heldKeys.has(e.code)) {
+    if (e.code === 'Space') e.preventDefault();
+    return;
+  }
   switch (e.code) {
     case 'ArrowLeft':
       if (!collide(current.shape, current.x - 1, current.y)) current.x--;
@@ -462,8 +561,16 @@ document.addEventListener('keydown', e => {
   }
   updateHUD();
 });
+document.addEventListener('keyup', e => heldKeys.delete(e.code));
+// keyup is lost if the window loses focus mid-press
+window.addEventListener('blur', () => heldKeys.clear());
 
 restartBtn.addEventListener('click', init);
+resumeBtn.addEventListener('click', resumeGame);
+menuRestartBtn.addEventListener('click', init);
+controlsBtn.addEventListener('click', () => setControlsOpen(menuControls.hidden));
+levelDownBtn.addEventListener('click', () => setStartLevel(startLevel - 1));
+levelUpBtn.addEventListener('click', () => setStartLevel(startLevel + 1));
 themeToggle.addEventListener('click', () => {
   setTheme(theme === 'light' ? 'dark' : 'light');
   themeToggle.blur(); // return keyboard control to the game
@@ -474,4 +581,5 @@ skinSelect.addEventListener('change', () => {
 });
 
 setSkin(loadSkin());
+setStartLevel(1);
 init();
