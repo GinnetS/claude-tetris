@@ -350,6 +350,52 @@ kbd {
   cursor: pointer;
 }
 
+/* ---- Records ---- */
+.hidden {
+  display: none !important;
+}
+
+#name-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.name-row {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+#name-input {
+  width: 150px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--kbd-border);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  user-select: text;
+}
+
+#name-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+#name-form button {
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .step-btn:hover:not(:disabled) {
   border-color: var(--accent);
 }
@@ -372,4 +418,87 @@ kbd {
 .hint {
   font-size: 11px;
   color: var(--label);
+}
+
+.records {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+
+.records table {
+  border-collapse: collapse;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+}
+
+.records th {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--label);
+  font-weight: 600;
+  padding: 2px 8px;
+}
+
+.records td {
+  padding: 3px 8px;
+  color: var(--text);
+}
+
+.records td:nth-child(2) {
+  text-align: left;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.records td:nth-child(n+3) {
+  text-align: right;
+}
+
+.records tr.highlight td {
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 700;
+}
+
+.records .empty td {
+  color: var(--muted);
+  text-align: center;
+  font-style: italic;
+}
+
+.records-bests {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.records-bests strong {
+  color: var(--accent);
+}
+
+.records-bests strong.new-best::after {
+  content: ' ★';
+  color: var(--danger);
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  color: var(--danger);
 }

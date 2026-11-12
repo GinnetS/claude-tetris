@@ -61,11 +61,35 @@
       </aside>
     </div>
 
-    <div id="overlay" class="overlay hidden">
-      <div id="gameover-box" class="overlay-box" hidden>
-        <p class="overlay-title">GAME OVER</p>
+    <div id="overlay" class="overlay">
+      <div id="gameover-box" class="overlay-box">
+        <p id="overlay-title" class="overlay-title">TETRIS</p>
         <p id="overlay-score"></p>
-        <button id="restart-btn" class="menu-btn primary">Reiniciar</button>
+
+        <form id="name-form" class="hidden" autocomplete="off">
+          <label for="name-input">¡Entraste en el top 5! Escribe tu nombre:</label>
+          <div class="name-row">
+            <input id="name-input" type="text" maxlength="12" placeholder="Tu nombre" />
+            <button type="submit">Guardar</button>
+          </div>
+        </form>
+
+        <section id="records" class="records hidden">
+          <span class="label">RÉCORDS</span>
+          <table>
+            <thead>
+              <tr><th>#</th><th>Nombre</th><th>Puntos</th><th>Líneas</th><th>Combo</th></tr>
+            </thead>
+            <tbody id="records-body"></tbody>
+          </table>
+          <p class="records-bests">
+            Mejor combo: <strong id="best-combo">0</strong>
+            · Líneas máx.: <strong id="best-lines">0</strong>
+          </p>
+          <button id="reset-records" type="button" class="link-btn">Borrar récords</button>
+        </section>
+
+        <button id="restart-btn" class="menu-btn primary">Jugar</button>
       </div>
 
       <div id="pause-menu" class="overlay-box menu" role="dialog" aria-modal="true" aria-labelledby="pause-title" hidden>

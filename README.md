@@ -45,6 +45,7 @@ Es una versión jugable del Tetris clásico con todas las mecánicas que esperar
 - **Menú de pausa** (`P` o `Esc`) con opciones para reanudar, reiniciar sin recargar la página, ver los controles y elegir el **nivel inicial** de la próxima partida.
 - **Game Over** con opción de reinicio.
 - **Skins** seleccionables desde el panel (Retro, Neón, Pastel y Pixel art), que se guardan en `localStorage`.
+- **Tabla de récords local** (top 5 con nombre, mejor combo y líneas máximas) guardada en `localStorage`.
 
 ---
 
@@ -103,7 +104,7 @@ Define la estructura visual:
 
 - Un `<canvas id="board">` de **300 × 600** píxeles donde se renderiza el tablero.
 - Un panel lateral con `SCORE`, `LINES`, `LEVEL`, vista de la siguiente pieza, la lista de controles, el interruptor de tema y el selector de skin (`#skin-select`).
-- Un overlay con dos paneles: el **menú de pausa** (`#pause-menu`: Reanudar, Reiniciar, Ver controles y selector de nivel inicial) y el de **GAME OVER** (`#gameover-box`). La lista de controles del menú se copia del panel lateral al cargar, así que solo hay que mantener esa.
+- Un overlay con tres vistas: la **pantalla de inicio** y el **GAME OVER** comparten panel (`#gameover-box`, con el formulario de nombre `#name-form` y la tabla de récords `#records`), y el **menú de pausa** (`#pause-menu`: Reanudar, Reiniciar, Ver controles y selector de nivel inicial). La lista de controles del menú se copia del panel lateral al cargar, así que solo hay que mantener esa.
 
 ### 2. `style.css`
 
@@ -130,11 +131,16 @@ Contiene toda la lógica del juego. A grandes rasgos:
   - **Pixel art** (`drawPixelCell`): textura de 6 × 6 píxeles (`PIXEL_PATTERN`) con tonos claros/oscuros derivados del color base (`shade`).
 
   `drawBlock` delega en la skin activa y `setSkin()` la cambia sin recargar: guarda la elección en `localStorage` (clave `tetris-skin`) y redibuja ambos canvas al instante. Al arrancar, `loadSkin()` recupera la preferencia.
+- **Combo**: número de piezas consecutivas que limpian al menos una línea; se reinicia a `0` cuando una pieza se fija sin limpiar nada. Se guarda el máximo de la partida (`maxCombo`).
+- **Récords** (`loadRecords`, `saveRecords`, `renderRecords`, `commitPendingRecord`): se guardan en `localStorage` bajo la clave `tetris-records` con la forma `{ scores: [...], bestCombo, maxLines }`. `scores` contiene el top 5 (`{ name, score, lines, combo, date }`) ordenado de mayor a menor. Una puntuación entra en el top si es mayor que `0` y hay menos de 5 récords o supera a la última. Al terminar la partida (`endGame`) se actualizan siempre el mejor combo y las líneas máximas (marcados con ★ si son nuevos); si la puntuación entra en el top se pide el nombre y la fila queda resaltada. Si se reinicia sin guardar, se guarda como `Anónimo`. El botón **Borrar récords** vacía la tabla tras confirmar.
 
 ### Flujo del juego
 
 ```
+showStartScreen()                   → overlay con récords y botón «Jugar»
+        ↓ (clic en Jugar)
 init()
+  ├─ commitPendingRecord()          → guarda un récord pendiente sin nombre
   ├─ createBoard()                  → matriz vacía
   ├─ next = randomPiece()
   ├─ spawn()                        → mueve next a current y genera nueva next
@@ -150,7 +156,7 @@ init()
    P / Esc → pauseGame() ⇄ resumeGame()  (menú: Reanudar · Reiniciar → init() · Ver controles · Nivel inicial)
 ```
 
-Cuando una pieza recién generada ya colisiona al aparecer (`spawn`), se dispara `endGame()` y se muestra el overlay de **Game Over**.
+Cuando una pieza recién generada ya colisiona al aparecer (`spawn`), se dispara `endGame()` y se muestra el overlay de **Game Over** con la tabla de récords (y el campo de nombre si la puntuación entra en el top 5).
 
 ---
 
@@ -172,7 +178,7 @@ Cuando una pieza recién generada ya colisiona al aparecer (`spawn`), se dispara
 03-tetris/
 ├── index.html      # Estructura del DOM y canvas
 ├── style.css       # Estilos del juego (tema oscuro/claro)
-├── game.js         # Toda la lógica del Tetris (~300 líneas)
+├── game.js         # Toda la lógica del Tetris (~500 líneas)
 └── README.md
 ```
 
@@ -191,6 +197,9 @@ Algunos parámetros fáciles de tunear en `game.js`:
 | `LINE_SCORES`  | Puntos por 1, 2, 3 o 4 líneas eliminadas | `[0,100,300,500,800]` |
 | `MAX_START_LEVEL` | Nivel inicial máximo seleccionable en el menú | `10`             |
 | `speedFor()`   | Intervalo de caída en ms según el nivel  | `1000` en nivel 1     |
+| `MAX_RECORDS`  | Puntuaciones guardadas en la tabla       | `5`                   |
+| `RECORDS_KEY`  | Clave de `localStorage` de los récords   | `'tetris-records'`    |
+| `DEFAULT_NAME` | Nombre si no se escribe ninguno          | `'Anónimo'`           |
 
 > Si cambias `COLS`, `ROWS` o `BLOCK`, recuerda ajustar también `width` y `height` del `<canvas id="board">` en `index.html` para que coincida (`COLS × BLOCK` × `ROWS × BLOCK`).
 

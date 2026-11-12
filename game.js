@@ -18,6 +18,10 @@ const PIECES = [
 const LINE_SCORES = [0, 100, 300, 500, 800];
 const MAX_START_LEVEL = 10; // at level 10 the drop interval is already near its 100ms floor
 
+const RECORDS_KEY = 'tetris-records';
+const MAX_RECORDS = 5;
+const DEFAULT_NAME = 'Anónimo';
+
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
 const nextCanvas = document.getElementById('next-canvas');
@@ -26,6 +30,7 @@ const scoreEl = document.getElementById('score');
 const linesEl = document.getElementById('lines');
 const levelEl = document.getElementById('level');
 const overlay = document.getElementById('overlay');
+const overlayTitle = document.getElementById('overlay-title');
 const gameOverBox = document.getElementById('gameover-box');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
@@ -44,6 +49,13 @@ menuControls.innerHTML = document.querySelector('.controls ul').innerHTML;
 const themeToggle = document.getElementById('theme-toggle');
 const themeText = document.getElementById('theme-text');
 const skinSelect = document.getElementById('skin-select');
+const nameForm = document.getElementById('name-form');
+const nameInput = document.getElementById('name-input');
+const recordsEl = document.getElementById('records');
+const recordsBody = document.getElementById('records-body');
+const bestComboEl = document.getElementById('best-combo');
+const bestLinesEl = document.getElementById('best-lines');
+const resetRecordsBtn = document.getElementById('reset-records');
 
 // Canvas colors per theme (canvas does not inherit CSS variables)
 const THEMES = {
@@ -181,7 +193,7 @@ const SKINS = {
 };
 let skin = 'retro';
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let board, current, next, score, lines, level, paused, lastTime, dropAccum, dropInterval, animId;
 let startLevel = 1; // chosen in the pause menu, applied by the next init()
 let baseLevel = 1;  // starting level of the game in progress
 // Keys pressed while the menu was open; game input ignores them until released
@@ -190,6 +202,11 @@ const heldKeys = new Set();
 function speedFor(lvl) {
   return Math.max(100, 1000 - (lvl - 1) * 90);
 }
+let combo, maxCombo;
+// true until the first game starts, so input is ignored on the start screen
+let gameOver = true;
+// Finished game waiting for the player's name before entering the top 5
+let pendingRecord = null;
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
@@ -253,11 +270,15 @@ function clearLines() {
     }
   }
   if (cleared) {
+    combo++;
+    maxCombo = Math.max(maxCombo, combo);
     lines += cleared;
     score += (LINE_SCORES[cleared] || 0) * level;
     level = baseLevel + Math.floor(lines / 10);
     dropInterval = speedFor(level);
     updateHUD();
+  } else {
+    combo = 0;
   }
 }
 
@@ -381,6 +402,96 @@ function setTheme(name) {
   themeText.textContent = theme === 'light' ? 'Modo oscuro' : 'Modo claro';
   // Redraw immediately so paused / game-over states update too
   if (current && next) { draw(); drawNext(); }
+  else if (board) { paintBackground(ctx, canvas.width, canvas.height); drawGrid(); } // start screen
+}
+
+// ---- Local records (localStorage) ----
+
+function loadRecords() {
+  const empty = { scores: [], bestCombo: 0, maxLines: 0 };
+  try {
+    const data = JSON.parse(localStorage.getItem(RECORDS_KEY));
+    if (!data || !Array.isArray(data.scores)) return empty;
+    return {
+      scores: data.scores.slice(0, MAX_RECORDS),
+      bestCombo: Number(data.bestCombo) || 0,
+      maxLines: Number(data.maxLines) || 0,
+    };
+  } catch {
+    return empty; // storage blocked (e.g. some browsers on file://) or corrupt data
+  }
+}
+
+function saveRecords(records) {
+  try {
+    localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
+  } catch {
+    // Storage unavailable: records just won't persist
+  }
+}
+
+function qualifiesForTop(records, value) {
+  if (value <= 0) return false;
+  return records.scores.length < MAX_RECORDS ||
+    value > records.scores[records.scores.length - 1].score;
+}
+
+// Index where a score would be inserted (after existing equal scores)
+function rankFor(records, value) {
+  const i = records.scores.findIndex(r => value > r.score);
+  return i === -1 ? records.scores.length : i;
+}
+
+// highlightIndex marks the current game's row; pending shows a placeholder
+// row for a score that is still waiting for a name.
+function renderRecords(records, highlightIndex = -1, pending = null) {
+  const rows = records.scores.slice();
+  if (pending) rows.splice(highlightIndex, 0, { ...pending, name: '???' });
+  recordsBody.replaceChildren();
+  if (!rows.length) {
+    const tr = document.createElement('tr');
+    tr.className = 'empty';
+    const td = document.createElement('td');
+    td.colSpan = 5;
+    td.textContent = 'Aún no hay récords';
+    tr.appendChild(td);
+    recordsBody.appendChild(tr);
+  }
+  rows.slice(0, MAX_RECORDS).forEach((r, i) => {
+    const tr = document.createElement('tr');
+    if (i === highlightIndex) tr.className = 'highlight';
+    for (const v of [i + 1, r.name, r.score.toLocaleString(), r.lines, r.combo]) {
+      const td = document.createElement('td');
+      td.textContent = v; // textContent: player names are never parsed as HTML
+      tr.appendChild(td);
+    }
+    recordsBody.appendChild(tr);
+  });
+  bestComboEl.textContent = records.bestCombo;
+  bestLinesEl.textContent = records.maxLines;
+  recordsEl.classList.remove('hidden');
+}
+
+function commitPendingRecord() {
+  if (!pendingRecord) return;
+  const records = loadRecords();
+  const entry = { ...pendingRecord, name: nameInput.value.trim() || DEFAULT_NAME };
+  const index = rankFor(records, entry.score);
+  records.scores.splice(index, 0, entry);
+  records.scores.length = Math.min(records.scores.length, MAX_RECORDS);
+  saveRecords(records);
+  pendingRecord = null;
+  nameForm.classList.add('hidden');
+  renderRecords(records, index);
+}
+
+function showStartScreen() {
+  overlayTitle.textContent = 'TETRIS';
+  overlayScore.textContent = 'Pulsa Jugar para empezar';
+  restartBtn.textContent = 'Jugar';
+  renderRecords(loadRecords());
+  showOverlay(gameOverBox);
+  restartBtn.focus();
 }
 
 function setSkin(name) {
@@ -390,6 +501,7 @@ function setSkin(name) {
   try { localStorage.setItem(SKIN_STORAGE_KEY, skin); } catch (_) { /* storage unavailable */ }
   // Redraw immediately so paused / game-over states update too
   if (current && next) { draw(); drawNext(); }
+  else if (board) { paintBackground(ctx, canvas.width, canvas.height); drawGrid(); } // start screen
 }
 
 function loadSkin() {
@@ -413,8 +525,34 @@ function hideOverlay() {
 function endGame() {
   gameOver = true;
   cancelAnimationFrame(animId);
-  overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
+  overlayTitle.textContent = 'GAME OVER';
+  overlayScore.textContent =
+    `Puntuación: ${score.toLocaleString()} · Líneas: ${lines} · Combo máx.: ${maxCombo}`;
+  restartBtn.textContent = 'Reiniciar';
+
+  // Best combo / max lines count every game, not just top-5 ones
+  const records = loadRecords();
+  const newCombo = maxCombo > records.bestCombo;
+  const newLines = lines > records.maxLines;
+  records.bestCombo = Math.max(records.bestCombo, maxCombo);
+  records.maxLines = Math.max(records.maxLines, lines);
+  saveRecords(records);
+
+  if (qualifiesForTop(records, score)) {
+    pendingRecord = { score, lines, combo: maxCombo, date: new Date().toISOString() };
+    renderRecords(records, rankFor(records, score), pendingRecord);
+    nameForm.classList.remove('hidden');
+  } else {
+    renderRecords(records);
+  }
+  bestComboEl.classList.toggle('new-best', newCombo);
+  bestLinesEl.classList.toggle('new-best', newLines);
+
   showOverlay(gameOverBox);
+  if (pendingRecord) {
+    nameInput.value = '';
+    nameInput.focus();
+  }
 }
 
 function pauseGame() {
@@ -501,9 +639,12 @@ function loop(ts) {
 }
 
 function init() {
+  commitPendingRecord(); // restarting without saving keeps the score as DEFAULT_NAME
   board = createBoard();
   score = 0;
   lines = 0;
+  combo = 0;
+  maxCombo = 0;
   paused = false;
   gameOver = false;
   baseLevel = startLevel;
@@ -515,11 +656,16 @@ function init() {
   spawn();
   updateHUD();
   hideOverlay();
+  nameForm.classList.add('hidden');
+  bestComboEl.classList.remove('new-best');
+  bestLinesEl.classList.remove('new-best');
   cancelAnimationFrame(animId);
   animId = requestAnimationFrame(loop);
 }
 
 document.addEventListener('keydown', e => {
+  // Typing a name for the records table must not control the game
+  if (e.target === nameInput) return;
   // Let the focused theme switch handle Space/Enter without dropping the piece
   if (e.target === themeToggle && (e.code === 'Space' || e.code === 'Enter')) return;
   // Let the focused skin selector use the arrow keys without moving the piece
@@ -571,6 +717,19 @@ menuRestartBtn.addEventListener('click', init);
 controlsBtn.addEventListener('click', () => setControlsOpen(menuControls.hidden));
 levelDownBtn.addEventListener('click', () => setStartLevel(startLevel - 1));
 levelUpBtn.addEventListener('click', () => setStartLevel(startLevel + 1));
+nameForm.addEventListener('submit', e => {
+  e.preventDefault();
+  commitPendingRecord();
+  restartBtn.focus();
+});
+resetRecordsBtn.addEventListener('click', () => {
+  if (!confirm('¿Borrar todos los récords?')) return;
+  try { localStorage.removeItem(RECORDS_KEY); } catch { /* storage unavailable */ }
+  bestComboEl.classList.remove('new-best');
+  bestLinesEl.classList.remove('new-best');
+  // A just-finished game still waiting for a name now tops the empty table
+  renderRecords(loadRecords(), pendingRecord ? 0 : -1, pendingRecord);
+});
 themeToggle.addEventListener('click', () => {
   setTheme(theme === 'light' ? 'dark' : 'light');
   themeToggle.blur(); // return keyboard control to the game
@@ -582,4 +741,8 @@ skinSelect.addEventListener('change', () => {
 
 setSkin(loadSkin());
 setStartLevel(1);
-init();
+// Start screen: draw the empty board behind the overlay and wait for "Jugar"
+board = createBoard();
+paintBackground(ctx, canvas.width, canvas.height);
+drawGrid();
+showStartScreen();
