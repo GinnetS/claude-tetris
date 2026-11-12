@@ -43,6 +43,7 @@ Es una versión jugable del Tetris clásico con todas las mecánicas que esperar
 - **Sistema de puntuación** clásico de Tetris (100 / 300 / 500 / 800 multiplicado por nivel).
 - **Niveles** que aumentan cada 10 líneas y aceleran la caída.
 - **Pausa** y **Game Over** con opción de reinicio.
+- **Skins** seleccionables desde el panel (Retro, Neón, Pastel y Pixel art), que se guardan en `localStorage`.
 
 ---
 
@@ -98,12 +99,12 @@ El juego se compone de tres archivos que cooperan:
 Define la estructura visual:
 
 - Un `<canvas id="board">` de **300 × 600** píxeles donde se renderiza el tablero.
-- Un panel lateral con `SCORE`, `LINES`, `LEVEL`, vista de la siguiente pieza y la lista de controles.
+- Un panel lateral con `SCORE`, `LINES`, `LEVEL`, vista de la siguiente pieza, la lista de controles, el interruptor de tema y el selector de skin (`#skin-select`).
 - Un overlay para los estados **PAUSA** y **GAME OVER**.
 
 ### 2. `style.css`
 
-Aporta el aspecto visual con estética _dark / retro arcade_: fondo oscuro, tipografía monoespaciada para los marcadores y _backdrop blur_ en los overlays. Los colores son variables CSS en `:root` (tema oscuro por defecto) y `:root[data-theme="light"]` las sobrescribe para el tema claro. El interruptor del panel lateral (`setTheme()` en `game.js`) cambia entre ambos y redibuja los canvas, cuyos colores de rejilla y brillo viven en la constante `THEMES`.
+Aporta el aspecto visual con estética _dark / retro arcade_: fondo oscuro, tipografía monoespaciada para los marcadores y _backdrop blur_ en los overlays. Los colores son variables CSS en `:root` (tema oscuro por defecto) y `:root[data-theme="light"]` las sobrescribe para el tema claro. El interruptor del panel lateral (`setTheme()` en `game.js`) cambia entre ambos y redibuja los canvas, cuyos colores de rejilla y brillo viven en la constante `THEMES`. El atributo `data-skin` en `<html>` permite ajustar el marco de los canvas por skin (p. ej. fondo negro en Neón).
 
 ### 3. `game.js`
 
@@ -118,6 +119,13 @@ Contiene toda la lógica del juego. A grandes rasgos:
 - **Puntuación**: usa la tabla clásica `[0, 100, 300, 500, 800]` multiplicada por el nivel actual; el hard drop suma 2 puntos por celda recorrida y el soft drop 1 punto por fila.
 - **Nivel y velocidad**: el nivel sube cada 10 líneas; la velocidad de caída se calcula como `max(100, 1000 − (level − 1) × 90)` milisegundos.
 - **Ghost piece** (`ghostY`): proyecta la posición final de la pieza actual hacia abajo y la dibuja con `globalAlpha = 0.2`.
+- **Skins** (`SKINS`): cada skin define su paleta (`colors`), un fondo opcional (`background`), colores de rejilla opcionales por tema (`grid`) y la función que pinta cada celda (`drawCell`):
+  - **Retro** (`drawRetroCell`): bloques cuadrados con colores planos y una franja de brillo.
+  - **Neón** (`drawNeonCell`): fondo negro y contorno luminoso con `shadowBlur`.
+  - **Pastel** (`drawPastelCell`): colores suaves con esquinas redondeadas (`arcTo`) y un reflejo.
+  - **Pixel art** (`drawPixelCell`): textura de 6 × 6 píxeles (`PIXEL_PATTERN`) con tonos claros/oscuros derivados del color base (`shade`).
+
+  `drawBlock` delega en la skin activa y `setSkin()` la cambia sin recargar: guarda la elección en `localStorage` (clave `tetris-skin`) y redibuja ambos canvas al instante. Al arrancar, `loadSkin()` recupera la preferencia.
 
 ### Flujo del juego
 
@@ -174,7 +182,7 @@ Algunos parámetros fáciles de tunear en `game.js`:
 | `COLS`         | Columnas del tablero                     | `10`                  |
 | `ROWS`         | Filas del tablero                        | `20`                  |
 | `BLOCK`        | Tamaño en píxeles de cada celda          | `30`                  |
-| `COLORS`       | Paleta de colores por tipo de pieza      | 7 colores             |
+| `SKINS`        | Paleta, fondo y dibujo de cada skin      | 4 skins (`retro`…)    |
 | `LINE_SCORES`  | Puntos por 1, 2, 3 o 4 líneas eliminadas | `[0,100,300,500,800]` |
 | `dropInterval` | Velocidad inicial de caída en ms         | `1000`                |
 
