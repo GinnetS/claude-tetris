@@ -43,6 +43,7 @@ Es una versión jugable del Tetris clásico con todas las mecánicas que esperar
 - **Sistema de puntuación** clásico de Tetris (100 / 300 / 500 / 800 multiplicado por nivel).
 - **Niveles** que aumentan cada 10 líneas y aceleran la caída.
 - **Pausa** y **Game Over** con opción de reinicio.
+- **Tabla de récords local** (top 5 con nombre del jugador, mejor combo y líneas máximas) guardada en `localStorage`.
 
 ---
 
@@ -99,7 +100,7 @@ Define la estructura visual:
 
 - Un `<canvas id="board">` de **300 × 600** píxeles donde se renderiza el tablero.
 - Un panel lateral con `SCORE`, `LINES`, `LEVEL`, vista de la siguiente pieza y la lista de controles.
-- Un overlay para los estados **PAUSA** y **GAME OVER**.
+- Un overlay para la **pantalla de inicio**, **PAUSA** y **GAME OVER**. En inicio y game over incluye el formulario de nombre y la tabla de **RÉCORDS**.
 
 ### 2. `style.css`
 
@@ -118,10 +119,15 @@ Contiene toda la lógica del juego. A grandes rasgos:
 - **Puntuación**: usa la tabla clásica `[0, 100, 300, 500, 800]` multiplicada por el nivel actual; el hard drop suma 2 puntos por celda recorrida y el soft drop 1 punto por fila.
 - **Nivel y velocidad**: el nivel sube cada 10 líneas; la velocidad de caída se calcula como `max(100, 1000 − (level − 1) × 90)` milisegundos.
 - **Ghost piece** (`ghostY`): proyecta la posición final de la pieza actual hacia abajo y la dibuja con `globalAlpha = 0.2`.
+- **Combo**: `clearLines` cuenta cuántas piezas seguidas eliminan al menos una línea; `maxCombo` guarda la mejor racha de la partida.
+- **Récords** (`loadRecords`, `saveRecords`, `recordRank`, `commitPendingRecord`, `renderRecords`, `resetRecords`): se guardan en `localStorage` bajo la clave `tetris.records` como `{ scores, bestCombo, maxLines }`. `scores` es el top 5 (`{ name, score, lines, combo, date }`), ordenado de mayor a menor; un empate con el 5.º puesto no entra. `bestCombo` y `maxLines` se actualizan con **cada** partida, entre o no en el top. El último nombre usado se recuerda en `tetris.playerName`.
+- **Game over** (`endGame`): si la puntuación entra en el top 5 aparece un campo de nombre y la fila de la partida se resalta en la tabla mientras se escribe. El récord se guarda con **Guardar** / `Enter`, o automáticamente al pulsar **Reiniciar** (como «Anónimo» si el nombre está vacío). **Borrar récords** pide confirmación y vacía la tabla.
 
 ### Flujo del juego
 
 ```
+showStartScreen()                   → overlay con récords y botón «Jugar»
+  ↓ (click en Jugar)
 init()
   ├─ createBoard()                  → matriz vacía
   ├─ next = randomPiece()
@@ -137,7 +143,7 @@ init()
    keydown → mover / rotar / soft-drop / hard-drop / pausa
 ```
 
-Cuando una pieza recién generada ya colisiona al aparecer (`spawn`), se dispara `endGame()` y se muestra el overlay de **Game Over**.
+Cuando una pieza recién generada ya colisiona al aparecer (`spawn`), se dispara `endGame()` y se muestra el overlay de **Game Over** con la tabla de récords.
 
 ---
 
@@ -159,7 +165,7 @@ Cuando una pieza recién generada ya colisiona al aparecer (`spawn`), se dispara
 03-tetris/
 ├── index.html      # Estructura del DOM y canvas
 ├── style.css       # Estilos del juego (tema oscuro/claro)
-├── game.js         # Toda la lógica del Tetris (~300 líneas)
+├── game.js         # Toda la lógica del Tetris (~500 líneas)
 └── README.md
 ```
 
@@ -177,8 +183,12 @@ Algunos parámetros fáciles de tunear en `game.js`:
 | `COLORS`       | Paleta de colores por tipo de pieza      | 7 colores             |
 | `LINE_SCORES`  | Puntos por 1, 2, 3 o 4 líneas eliminadas | `[0,100,300,500,800]` |
 | `dropInterval` | Velocidad inicial de caída en ms         | `1000`                |
+| `MAX_RECORDS`  | Puestos de la tabla de récords           | `5`                   |
+| `NAME_MAX_LENGTH` | Longitud máxima del nombre del jugador | `12`                  |
+| `RECORDS_KEY`  | Clave de `localStorage` de los récords   | `'tetris.records'`    |
 
 > Si cambias `COLS`, `ROWS` o `BLOCK`, recuerda ajustar también `width` y `height` del `<canvas id="board">` en `index.html` para que coincida (`COLS × BLOCK` × `ROWS × BLOCK`).
+> Si cambias `NAME_MAX_LENGTH`, ajusta también el `maxlength` de `<input id="player-name">` en `index.html`.
 
 ---
 

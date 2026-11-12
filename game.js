@@ -28,6 +28,12 @@ const PIECES = [
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
 
+// High score table (persisted in localStorage)
+const RECORDS_KEY = 'tetris.records';
+const PLAYER_KEY = 'tetris.playerName';
+const MAX_RECORDS = 5;
+const NAME_MAX_LENGTH = 12;
+
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
 const nextCanvas = document.getElementById('next-canvas');
@@ -41,6 +47,14 @@ const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeToggle = document.getElementById('theme-toggle');
 const themeText = document.getElementById('theme-text');
+const overlayStats = document.getElementById('overlay-stats');
+const nameForm = document.getElementById('name-form');
+const nameLabel = document.getElementById('name-label');
+const nameInput = document.getElementById('player-name');
+const recordsSection = document.getElementById('records');
+const recordsBody = document.getElementById('records-body');
+const recordsStats = document.getElementById('records-stats');
+const resetRecordsBtn = document.getElementById('reset-records');
 
 // Canvas colors per theme (canvas does not inherit CSS variables)
 const THEMES = {
@@ -50,6 +64,14 @@ const THEMES = {
 let theme = 'dark';
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+// combo = consecutive locked pieces that cleared at least one line
+let combo, maxCombo;
+// Result of the last game waiting for a name before entering the table
+let pendingRecord = null;
+// Index of the row to highlight in the table (-1 = none)
+let highlightIndex = -1;
+// Which all-time stats the last game improved
+let newBest = { combo: false, lines: false };
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
@@ -112,6 +134,8 @@ function clearLines() {
       r++;
     }
   }
+  combo = cleared ? combo + 1 : 0;
+  maxCombo = Math.max(maxCombo, combo);
   if (cleared) {
     lines += cleared;
     score += (LINE_SCORES[cleared] || 0) * level;
@@ -234,14 +258,188 @@ function setTheme(name) {
   themeText.textContent = theme === 'light' ? 'Modo oscuro' : 'Modo claro';
   // Redraw immediately so paused / game-over states update too
   if (current && next) { draw(); drawNext(); }
+  else if (board) { ctx.clearRect(0, 0, canvas.width, canvas.height); drawGrid(); }
+}
+
+// ---- High scores ----
+
+function emptyRecords() {
+  return { scores: [], bestCombo: 0, maxLines: 0 };
+}
+
+function loadRecords() {
+  try {
+    const data = JSON.parse(localStorage.getItem(RECORDS_KEY));
+    if (!data || !Array.isArray(data.scores)) return emptyRecords();
+    return {
+      scores: data.scores
+        .filter(e => e && Number.isFinite(e.score))
+        .slice(0, MAX_RECORDS),
+      bestCombo: Number(data.bestCombo) || 0,
+      maxLines: Number(data.maxLines) || 0,
+    };
+  } catch {
+    return emptyRecords();
+  }
+}
+
+function saveRecords(records) {
+  try {
+    localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
+  } catch {
+    // Storage unavailable (private mode, quota): records only last this session
+  }
+}
+
+function loadPlayerName() {
+  try { return localStorage.getItem(PLAYER_KEY) || ''; } catch { return ''; }
+}
+
+function savePlayerName(name) {
+  try { localStorage.setItem(PLAYER_KEY, name); } catch { /* ignore */ }
+}
+
+// Position (0-based) a score would take in the table, or -1 if it doesn't qualify.
+// Ties go below existing entries, so matching the 5th place is not enough.
+function recordRank(records, value) {
+  if (value <= 0) return -1;
+  const idx = records.scores.findIndex(e => value > e.score);
+  if (idx !== -1) return idx;
+  return records.scores.length < MAX_RECORDS ? records.scores.length : -1;
+}
+
+function cleanName(raw) {
+  return raw.trim().slice(0, NAME_MAX_LENGTH) || 'Anónimo';
+}
+
+// Store the pending game in the table under the given name
+function commitPendingRecord() {
+  if (!pendingRecord) return;
+  const name = cleanName(nameInput.value);
+  const records = loadRecords();
+  const rank = recordRank(records, pendingRecord.score);
+  if (rank !== -1) {
+    records.scores.splice(rank, 0, { ...pendingRecord, name });
+    records.scores.length = Math.min(records.scores.length, MAX_RECORDS);
+    saveRecords(records);
+  }
+  savePlayerName(name);
+  highlightIndex = rank;
+  pendingRecord = null;
+  nameForm.classList.add('hidden');
+  renderRecords();
+}
+
+function renderRecords() {
+  const records = loadRecords();
+  const rows = records.scores.map(e => ({ ...e, pending: false }));
+  let highlight = highlightIndex;
+  if (pendingRecord) {
+    // Preview where the current game will land, using the name being typed
+    highlight = recordRank(records, pendingRecord.score);
+    rows.splice(highlight, 0, { ...pendingRecord, name: nameInput.value.trim() || '…', pending: true });
+    rows.length = Math.min(rows.length, MAX_RECORDS);
+  }
+
+  recordsBody.replaceChildren();
+  if (!rows.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 4;
+    td.className = 'records-empty';
+    td.textContent = 'Sin récords todavía';
+    tr.append(td);
+    recordsBody.append(tr);
+  }
+  rows.forEach((e, i) => {
+    const tr = document.createElement('tr');
+    if (i === highlight) tr.className = 'current';
+    for (const text of [i + 1, e.name, e.score.toLocaleString(), e.lines ?? 0]) {
+      const td = document.createElement('td');
+      td.textContent = text;
+      tr.append(td);
+    }
+    recordsBody.append(tr);
+  });
+
+  recordsStats.replaceChildren(
+    statLine('Mejor combo', records.bestCombo, newBest.combo),
+    statLine('Líneas máx.', records.maxLines, newBest.lines),
+  );
+  resetRecordsBtn.disabled = !records.scores.length && !records.bestCombo && !records.maxLines;
+}
+
+function statLine(label, value, isNew) {
+  const span = document.createElement('span');
+  span.textContent = `${label}: ${value}`;
+  if (isNew) {
+    span.className = 'new-best';
+    span.textContent += ' ¡nuevo!';
+  }
+  return span;
+}
+
+function resetRecords() {
+  if (!confirm('¿Borrar todos los récords?')) return;
+  try { localStorage.removeItem(RECORDS_KEY); } catch { /* ignore */ }
+  highlightIndex = -1;
+  newBest = { combo: false, lines: false };
+  renderRecords();
+}
+
+// Show the overlay with the records table (start screen and game over)
+function showRecordsOverlay(title, scoreText, statsText, buttonText) {
+  overlayTitle.textContent = title;
+  overlayScore.textContent = scoreText;
+  overlayStats.textContent = statsText;
+  restartBtn.textContent = buttonText;
+  recordsSection.classList.remove('hidden');
+  renderRecords();
+  overlay.classList.remove('hidden');
+}
+
+function showStartScreen() {
+  board = createBoard();
+  gameOver = true; // blocks game input until the first game starts
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawGrid();
+  nameForm.classList.add('hidden');
+  showRecordsOverlay('TETRIS', '', '', 'Jugar');
+  restartBtn.focus();
 }
 
 function endGame() {
   gameOver = true;
   cancelAnimationFrame(animId);
-  overlayTitle.textContent = 'GAME OVER';
-  overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
-  overlay.classList.remove('hidden');
+
+  // All-time stats count every game, even those outside the top 5
+  const records = loadRecords();
+  newBest = { combo: maxCombo > records.bestCombo, lines: lines > records.maxLines };
+  records.bestCombo = Math.max(records.bestCombo, maxCombo);
+  records.maxLines = Math.max(records.maxLines, lines);
+  saveRecords(records);
+
+  highlightIndex = -1;
+  const rank = recordRank(records, score);
+  pendingRecord = rank === -1 ? null : { score, lines, combo: maxCombo, date: Date.now() };
+  nameForm.classList.toggle('hidden', !pendingRecord);
+  if (pendingRecord) {
+    nameLabel.textContent = `¡Entras en el top ${MAX_RECORDS}! Puesto #${rank + 1}`;
+    nameInput.value = loadPlayerName();
+  }
+
+  showRecordsOverlay(
+    'GAME OVER',
+    `Puntuación: ${score.toLocaleString()}`,
+    `Líneas: ${lines} · Mejor combo: ${maxCombo}`,
+    'Reiniciar',
+  );
+  // Only focus the text field: focusing the button here would let the
+  // keyup of the Space that ended the game click it and restart instantly.
+  if (pendingRecord) {
+    nameInput.focus();
+    nameInput.select();
+  }
 }
 
 function togglePause() {
@@ -254,6 +452,10 @@ function togglePause() {
     cancelAnimationFrame(animId);
     overlayTitle.textContent = 'PAUSA';
     overlayScore.textContent = '';
+    overlayStats.textContent = '';
+    nameForm.classList.add('hidden');
+    recordsSection.classList.add('hidden');
+    restartBtn.textContent = 'Reiniciar';
     overlay.classList.remove('hidden');
   }
 }
@@ -282,6 +484,8 @@ function init() {
   score = 0;
   lines = 0;
   level = 1;
+  combo = 0;
+  maxCombo = 0;
   paused = false;
   gameOver = false;
   dropInterval = 1000;
@@ -298,6 +502,8 @@ function init() {
 document.addEventListener('keydown', e => {
   // Let the focused theme switch handle Space/Enter without dropping the piece
   if (e.target === themeToggle && (e.code === 'Space' || e.code === 'Enter')) return;
+  // Typing the player name must not control the game
+  if (e.target === nameInput) return;
   if (e.code === 'KeyP') { togglePause(); return; }
   if (paused || gameOver) return;
   switch (e.code) {
@@ -322,10 +528,21 @@ document.addEventListener('keydown', e => {
   updateHUD();
 });
 
-restartBtn.addEventListener('click', init);
+restartBtn.addEventListener('click', () => {
+  // Starting a new game without pressing "Guardar" still keeps the record
+  commitPendingRecord();
+  init();
+});
+nameForm.addEventListener('submit', e => {
+  e.preventDefault();
+  commitPendingRecord();
+  restartBtn.focus(); // Enter again starts a new game
+});
+nameInput.addEventListener('input', renderRecords);
+resetRecordsBtn.addEventListener('click', resetRecords);
 themeToggle.addEventListener('click', () => {
   setTheme(theme === 'light' ? 'dark' : 'light');
   themeToggle.blur(); // return keyboard control to the game
 });
 
-init();
+showStartScreen();
