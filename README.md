@@ -43,6 +43,7 @@ Es una versión jugable del Tetris clásico con todas las mecánicas que esperar
 - **Sistema de puntuación** clásico de Tetris (100 / 300 / 500 / 800 multiplicado por nivel).
 - **Niveles** que aumentan cada 10 líneas y aceleran la caída.
 - **Pausa** y **Game Over** con opción de reinicio.
+- **Skins visuales** seleccionables (Retro, Neón, Pastel y Pixel art), recordadas entre sesiones.
 
 ---
 
@@ -98,7 +99,7 @@ El juego se compone de tres archivos que cooperan:
 Define la estructura visual:
 
 - Un `<canvas id="board">` de **300 × 600** píxeles donde se renderiza el tablero.
-- Un panel lateral con `SCORE`, `LINES`, `LEVEL`, vista de la siguiente pieza y la lista de controles.
+- Un panel lateral con `SCORE`, `LINES`, `LEVEL`, vista de la siguiente pieza, la lista de controles, el interruptor de tema y el selector de skin (`<select id="skin-select">`).
 - Un overlay para los estados **PAUSA** y **GAME OVER**.
 
 ### 2. `style.css`
@@ -118,6 +119,11 @@ Contiene toda la lógica del juego. A grandes rasgos:
 - **Puntuación**: usa la tabla clásica `[0, 100, 300, 500, 800]` multiplicada por el nivel actual; el hard drop suma 2 puntos por celda recorrida y el soft drop 1 punto por fila.
 - **Nivel y velocidad**: el nivel sube cada 10 líneas; la velocidad de caída se calcula como `max(100, 1000 − (level − 1) × 90)` milisegundos.
 - **Ghost piece** (`ghostY`): proyecta la posición final de la pieza actual hacia abajo y la dibuja con `globalAlpha = 0.2`.
+- **Skins** (`SKINS`, `setSkin`): cada skin define su paleta (`colors`), un fondo y color de rejilla opcionales (`background`, `grid`; si faltan se usan los del tema claro/oscuro) y la función `drawCell` que pinta cada celda. `drawBlock` delega en la skin activa, así que el cambio se aplica al instante sin recargar. La elección se guarda en `localStorage` (clave `tetris-skin`).
+  - **Retro**: bloques cuadrados con colores planos (la paleta `COLORS`).
+  - **Neón**: fondo negro y contornos brillantes con `shadowBlur`.
+  - **Pastel**: colores suaves y bordes redondeados simulados con `arcTo` (`roundedRectPath`).
+  - **Pixel art**: una textura de 6 × 6 píxeles (`PIXEL_PATTERN`) estampada sobre cada bloque.
 
 ### Flujo del juego
 
@@ -174,7 +180,9 @@ Algunos parámetros fáciles de tunear en `game.js`:
 | `COLS`         | Columnas del tablero                     | `10`                  |
 | `ROWS`         | Filas del tablero                        | `20`                  |
 | `BLOCK`        | Tamaño en píxeles de cada celda          | `30`                  |
-| `COLORS`       | Paleta de colores por tipo de pieza      | 7 colores             |
+| `COLORS`       | Paleta de la skin Retro por tipo de pieza | 7 colores            |
+| `SKINS`        | Skins disponibles (paleta, fondo, `drawCell`) | `retro`, `neon`, `pastel`, `pixel` |
+| `PIXEL_PATTERN`| Textura de la skin Pixel art             | matriz 6 × 6          |
 | `LINE_SCORES`  | Puntos por 1, 2, 3 o 4 líneas eliminadas | `[0,100,300,500,800]` |
 | `dropInterval` | Velocidad inicial de caída en ms         | `1000`                |
 
