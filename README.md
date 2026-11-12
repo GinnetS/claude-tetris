@@ -42,7 +42,8 @@ Es una versión jugable del Tetris clásico con todas las mecánicas que esperar
 - **Vista previa** de la siguiente pieza.
 - **Sistema de puntuación** clásico de Tetris (100 / 300 / 500 / 800 multiplicado por nivel).
 - **Niveles** que aumentan cada 10 líneas y aceleran la caída.
-- **Pausa** y **Game Over** con opción de reinicio.
+- **Menú de pausa** con opciones para reanudar, reiniciar, ver los controles y elegir el nivel inicial de la próxima partida.
+- **Game Over** con opción de reinicio.
 
 ---
 
@@ -85,7 +86,20 @@ Después abre `http://localhost:8000` en el navegador.
 | `↑` o `X` | Rotar la pieza en sentido horario |
 | `↓`       | Soft drop (bajar más rápido)      |
 | `Espacio` | Hard drop (caída instantánea)     |
-| `P`       | Pausar / reanudar                 |
+| `P` o `Esc` | Abrir / cerrar el menú de pausa |
+
+---
+
+### En el menú de pausa
+
+| Tecla              | Acción                                   |
+| ------------------ | ---------------------------------------- |
+| `↑` / `↓`          | Moverse entre las opciones               |
+| `Enter` o `Espacio` | Elegir la opción seleccionada           |
+| `←` / `→`          | Cambiar el nivel inicial (sobre el selector) |
+| `P` o `Esc`        | Reanudar la partida                      |
+
+Mientras el menú está abierto el juego no recibe ninguna tecla. Además, las teclas que se pulsaron dentro del menú se ignoran hasta que se sueltan, para que una tecla mantenida al volver no mueva la pieza.
 
 ---
 
@@ -99,7 +113,7 @@ Define la estructura visual:
 
 - Un `<canvas id="board">` de **300 × 600** píxeles donde se renderiza el tablero.
 - Un panel lateral con `SCORE`, `LINES`, `LEVEL`, vista de la siguiente pieza y la lista de controles.
-- Un overlay para los estados **PAUSA** y **GAME OVER**.
+- Un overlay para **GAME OVER** y otro (`#pause-menu`) con el menú de pausa. La lista de controles del menú se copia desde la del panel lateral al cargar, así que solo hay que mantener una.
 
 ### 2. `style.css`
 
@@ -116,7 +130,8 @@ Contiene toda la lógica del juego. A grandes rasgos:
 - **Game loop** (`loop`): basado en `requestAnimationFrame`, acumula el tiempo transcurrido y baja la pieza una fila cuando se supera `dropInterval`.
 - **Limpieza de líneas** (`clearLines`): recorre el tablero de abajo hacia arriba; cada fila completa se elimina y se inserta una vacía en la cima.
 - **Puntuación**: usa la tabla clásica `[0, 100, 300, 500, 800]` multiplicada por el nivel actual; el hard drop suma 2 puntos por celda recorrida y el soft drop 1 punto por fila.
-- **Nivel y velocidad**: el nivel sube cada 10 líneas; la velocidad de caída se calcula como `max(100, 1000 − (level − 1) × 90)` milisegundos.
+- **Nivel y velocidad**: la partida empieza en el nivel inicial elegido en el menú de pausa (`startLevel`, guardado en `localStorage`) y sube uno cada 10 líneas: `level = nivel inicial + floor(lines / 10)`. La velocidad de caída se calcula en `dropIntervalFor(level)` como `max(100, 1000 − (level − 1) × 90)` milisegundos.
+- **Menú de pausa** (`openPauseMenu`, `closePauseMenu`, `handleMenuKey`): detiene el bucle, captura todas las teclas para navegar el menú y, al reanudar, ignora las teclas que sigan pulsadas (`heldKeys`) hasta que se suelten. El nivel inicial se cambia con `setStartLevel` y se aplica en la siguiente llamada a `init()`.
 - **Ghost piece** (`ghostY`): proyecta la posición final de la pieza actual hacia abajo y la dibuja con `globalAlpha = 0.2`.
 
 ### Flujo del juego
@@ -134,7 +149,8 @@ init()
      ├─ draw()  (grid + tablero + ghost + pieza actual)
      └─ requestAnimationFrame(loop)
 
-   keydown → mover / rotar / soft-drop / hard-drop / pausa
+   keydown → mover / rotar / soft-drop / hard-drop / menú de pausa
+   menú abierto → handleMenuKey() (el juego no recibe teclas)
 ```
 
 Cuando una pieza recién generada ya colisiona al aparecer (`spawn`), se dispara `endGame()` y se muestra el overlay de **Game Over**.
@@ -176,7 +192,8 @@ Algunos parámetros fáciles de tunear en `game.js`:
 | `BLOCK`        | Tamaño en píxeles de cada celda          | `30`                  |
 | `COLORS`       | Paleta de colores por tipo de pieza      | 7 colores             |
 | `LINE_SCORES`  | Puntos por 1, 2, 3 o 4 líneas eliminadas | `[0,100,300,500,800]` |
-| `dropInterval` | Velocidad inicial de caída en ms         | `1000`                |
+| `dropIntervalFor` | Velocidad de caída en ms según el nivel | `max(100, 1000 − (level − 1) × 90)` |
+| `MAX_START_LEVEL` | Nivel inicial máximo seleccionable en el menú | `10`          |
 
 > Si cambias `COLS`, `ROWS` o `BLOCK`, recuerda ajustar también `width` y `height` del `<canvas id="board">` en `index.html` para que coincida (`COLS × BLOCK` × `ROWS × BLOCK`).
 

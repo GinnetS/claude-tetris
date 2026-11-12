@@ -19,5 +19,5 @@ No build, install, tests, or linter. Open `index.html` directly or serve the fol
 ## Keep in sync
 
 - `#board` canvas `width`/`height` in `index.html` must equal `COLS × BLOCK` by `ROWS × BLOCK` in `game.js`. `#next-canvas` (120×120) assumes a 4×4 grid of 30px cells (`NB` in `drawNext`).
-- Controls are defined in three places: the `keydown` handler in `game.js`, the `.controls` list in `index.html`, and the Controles table in `README.md`. Update all three together.
+- Controls are defined in three places: the `keydown` handler in `game.js`, the `.controls` list in `index.html`, and the Controles table in `README.md`. Update all three together. The pause menu's controls list (`#pause-controls`) is cloned from the panel's `.controls ul` at load, so it needs no separate edit. Pause-menu navigation keys live in `handleMenuKey` and the "En el menú de pausa" table in `README.md`.
 - `README.md` documents function names, scoring/speed formulas, and the tunable constants table. Update it when you change those.
